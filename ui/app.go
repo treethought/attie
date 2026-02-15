@@ -24,7 +24,7 @@ type App struct {
 
 func NewApp() *App {
 	search := &CommandPallete{}
-	repoView := &RepoView{}
+	repoView := NewRepoView()
 	return &App{
 		client:   at.NewClient(""),
 		search:   search,
@@ -40,6 +40,9 @@ func (a *App) Init() tea.Cmd {
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	// top level always handle ctrl-c
+	case tea.WindowSizeMsg:
+		a.active, _ = a.active.Update(msg)
+		return a, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -66,10 +69,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case repoLoadedMsg:
-		a.repoView.SetRepo(msg.repo)
+		cmd := a.repoView.SetRepo(msg.repo)
 		a.active = a.repoView
 		a.search.loading = false
-		return a, nil
+		return a, cmd
 
 	case repoErrorMsg:
 		a.search.err = msg.err.Error()

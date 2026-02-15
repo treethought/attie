@@ -16,7 +16,7 @@ type Client struct {
 
 func main() {
 	log.SetFormatter(&log.TextFormatter{
-		FullTimestamp: false,
+		FullTimestamp:    false,
 		DisableTimestamp: true,
 	})
 	f, err := os.Create("debug.log")
@@ -29,7 +29,7 @@ func main() {
 
 	app := ui.NewApp()
 
-	p := tea.NewProgram(app)
+	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}

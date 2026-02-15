@@ -57,7 +57,7 @@ func (c *Client) GetRepo(ctx context.Context, repo string) (*comatproto.RepoDesc
 		return nil, fmt.Errorf("failed to get client with identifier: %w", err)
 	}
 
-	// TODO: downlaod repo as car
+	// TODO: download repo as car
 	// https://github.com/bluesky-social/cookbook/blob/main/go-repo-export/main.go#L46
 	resp, err := comatproto.RepoDescribeRepo(ctx, client, repo)
 	if err != nil {
