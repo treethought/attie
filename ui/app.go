@@ -25,22 +25,53 @@ type App struct {
 	active     tea.Model
 	err        string
 	w, h       int
+	query      string
+	spinner    spinner.Model
+	loading    bool
 }
 
-func NewApp() *App {
+func NewApp(query string) *App {
 	search := &CommandPallete{}
 	repoView := NewRepoView()
+	spin := spinner.New()
+	spin.Spinner = spinner.Dot
 	return &App{
+		query:      query,
 		client:     at.NewClient(""),
 		search:     search,
 		repoView:   repoView,
 		rlist:      NewRecordsList(nil),
 		recordView: NewRecordView(false),
 		active:     search,
+		spinner:    spin,
+		loading:    false,
 	}
 }
 
 func (a *App) Init() tea.Cmd {
+	a.loading = true
+	if id, err := syntax.ParseAtIdentifier(a.query); err == nil {
+		log.Printf("Starting with query: %s", id.String())
+		return a.fetchRepo(id.String())
+	}
+	if uri, err := syntax.ParseATURI(a.query); err == nil {
+
+		if uri.Collection() == "" {
+			return a.fetchRepo(uri.Authority().String())
+		}
+		if uri.RecordKey().String() == "" {
+			id := uri.Authority().Handle().String()
+			if uri.Authority().IsDID() {
+				id = uri.Authority().DID().String()
+			}
+			return a.fetchRecords(uri.Collection().String(), id)
+		}
+
+		log.Printf("Starting with query: %s", uri.String())
+		return a.fetchRecord(uri.Collection().String(), uri.Authority().String(), uri.RecordKey().String())
+	}
+
+	a.loading = false
 	return a.active.Init()
 }
 
@@ -92,6 +123,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case repoLoadedMsg:
+		a.loading = false
 		cmd := a.repoView.SetRepo(msg.repo)
 		a.repoView.SetSize(a.w, a.h) // Set size before switching view
 		a.active = a.repoView
@@ -103,6 +135,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.fetchRecords(msg.collection, a.repoView.repo.Handle)
 
 	case recordsLoadedMsg:
+		a.loading = false
 		cmd := a.rlist.SetRecords(msg.records)
 		a.rlist.SetSize(a.w, a.h) // Set size before switching view
 		a.active = a.rlist
@@ -110,6 +143,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 
 	case recordSelectedMsg:
+		a.loading = false
 		a.recordView.SetRecord(msg.record)
 		a.recordView.SetSize(a.w, a.h) // Set size before switching view
 		a.active = a.recordView
@@ -121,9 +155,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	var cmd tea.Cmd
-	a.active, cmd = a.active.Update(msg)
-	return a, cmd
+
+	var cmds []tea.Cmd
+	if a.loading {
+		sp, scmd := a.spinner.Update(msg)
+		a.spinner = sp
+		cmds = append(cmds, scmd)
+	}
+	var ac tea.Cmd
+	a.active, ac = a.active.Update(msg)
+	cmds = append(cmds, ac)
+	return a, tea.Batch(cmds...)
 }
 
 func (a *App) fetchRepo(repoId string) tea.Cmd {
@@ -156,7 +198,30 @@ func (a *App) fetchRecords(collection, repo string) tea.Cmd {
 	}
 }
 
+func (a *App) fetchRecord(collection, repo, rkey string) tea.Cmd {
+	return func() tea.Msg {
+		rec, err := a.client.GetRecord(context.Background(), collection, repo, rkey)
+		if err != nil {
+			log.Printf("Failed to get record: %s", err.Error())
+			return repoErrorMsg{err: err}
+		}
+		log.WithFields(log.Fields{
+			"repo":       repo,
+			"collection": collection,
+			"rkey":       rkey,
+		}).Info("Record loaded")
+		return recordSelectedMsg{
+			record: &agnostic.RepoListRecords_Record{
+				Uri:   rec.Uri,
+				Value: rec.Value,
+			}}
+	}
+}
+
 func (a *App) View() string {
+	if a.loading {
+		return "Loading... " + a.spinner.View()
+	}
 	return a.active.View()
 }
 

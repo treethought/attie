@@ -27,8 +27,12 @@ func main() {
 	log.SetOutput(f)
 	log.Warn("starting goatie")
 
-	app := ui.NewApp()
+	query := ""
+	if len(os.Args) > 1 {
+		query = os.Args[1]
+	}
 
+	app := ui.NewApp(query)
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
