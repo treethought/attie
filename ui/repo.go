@@ -5,9 +5,11 @@ import (
 	"strings"
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
+	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/treethought/goatie/at"
 )
 
 var (
@@ -91,11 +93,12 @@ func (cl *CollectionList) View() string {
 }
 
 type RepoView struct {
-	repo   *comatproto.RepoDescribeRepo_Output
-	clist  *CollectionList
-	header string
-	width  int
-	height int
+	identity *identity.Identity
+	repo     *comatproto.RepoDescribeRepo_Output
+	clist    *CollectionList
+	header   string
+	width    int
+	height   int
 }
 
 func NewRepoView() *RepoView {
@@ -130,6 +133,10 @@ func (r *RepoView) buildHeader() string {
 	s.WriteString(dimStyle.Render(r.repo.Did))
 	s.WriteString("\n\n")
 
+	s.WriteString(labelStyle.Render("PDS:  "))
+	s.WriteString(valueStyle.Render(r.identity.PDSEndpoint()))
+	s.WriteString("\n")
+
 	// Collections section header
 	s.WriteString(headerStyle.Render("Collections "))
 	s.WriteString(dimStyle.Render(fmt.Sprintf("(%d)", len(r.repo.Collections))))
@@ -140,10 +147,11 @@ func (r *RepoView) buildHeader() string {
 
 }
 
-func (r *RepoView) SetRepo(repo *comatproto.RepoDescribeRepo_Output) tea.Cmd {
-	r.repo = repo
+func (r *RepoView) SetRepo(repo *at.RepoWithIdentity) tea.Cmd {
+	r.identity = repo.Identity
+	r.repo = repo.Repo
 	r.header = r.buildHeader()
-	r.clist = NewCollectionList(repo.Collections)
+	r.clist = NewCollectionList(repo.Repo.Collections)
 	return r.clist.Init()
 }
 

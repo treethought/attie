@@ -7,7 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/bluesky-social/indigo/api/agnostic"
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
+	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -18,6 +18,7 @@ import (
 type App struct {
 	client     *at.Client
 	search     *CommandPallete
+	identity   identity.Identity
 	repoView   *RepoView
 	rlist      *RecordsList
 	recordView *RecordView
@@ -72,7 +73,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case a.rlist:
 				a.active = a.repoView
 				return a, nil
-				case a.recordView:
+			case a.recordView:
 				a.active = a.rlist
 				return a, nil
 			}
@@ -133,7 +134,7 @@ func (a *App) fetchRepo(repoId string) tea.Cmd {
 			return repoErrorMsg{err: err}
 		}
 		log.WithFields(log.Fields{
-			"repo": resp.Handle,
+			"repo": resp.Repo.Handle,
 		}).Info("Repo loaded")
 		return repoLoadedMsg{repo: resp}
 	}
@@ -165,7 +166,7 @@ type searchSubmitMsg struct {
 }
 
 type repoLoadedMsg struct {
-	repo *comatproto.RepoDescribeRepo_Output
+	repo *at.RepoWithIdentity
 }
 
 type selectCollectionMsg struct {

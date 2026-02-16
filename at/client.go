@@ -31,12 +31,24 @@ func NewClient(service string) *Client {
 	}
 }
 
-func (c *Client) withIdentifier(ctx context.Context, raw string) (*atclient.APIClient, error) {
+func (c *Client) GetIdentity(ctx context.Context, raw string) (*identity.Identity, error) {
 	id, err := syntax.ParseAtIdentifier(raw)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse repo identifier: %w", err)
+		return nil, fmt.Errorf("failed to parse identifier: %w", err)
 	}
 	idd, err := c.dir.Lookup(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup identifier: %w", err)
+	}
+	log.WithFields(log.Fields{
+		"handle": idd.Handle,
+		"DID":    idd.DID,
+	}).Info("identifier resolved")
+	return idd, nil
+}
+
+func (c *Client) withIdentifier(ctx context.Context, raw string) (*atclient.APIClient, error) {
+	idd, err := c.GetIdentity(ctx, raw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup identifier: %w", err)
 	}
@@ -47,10 +59,20 @@ func (c *Client) withIdentifier(ctx context.Context, raw string) (*atclient.APIC
 	return c.c.WithService(idd.PDSEndpoint()), nil
 }
 
-func (c *Client) GetRepo(ctx context.Context, repo string) (*comatproto.RepoDescribeRepo_Output, error) {
+type RepoWithIdentity struct {
+	Identity *identity.Identity
+	Repo     *comatproto.RepoDescribeRepo_Output
+}
+
+func (c *Client) GetRepo(ctx context.Context, repo string) (*RepoWithIdentity, error) {
 	log.WithFields(log.Fields{
 		"repo": repo,
 	}).Info("describe repo")
+
+	id, err := c.GetIdentity(ctx, repo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup identifier: %w", err)
+	}
 
 	client, err := c.withIdentifier(ctx, repo)
 	if err != nil {
@@ -63,7 +85,10 @@ func (c *Client) GetRepo(ctx context.Context, repo string) (*comatproto.RepoDesc
 	if err != nil {
 		return nil, fmt.Errorf("failed to describe repo: %w", err)
 	}
-	return resp, nil
+	return &RepoWithIdentity{
+		Identity: id,
+		Repo:     resp,
+	}, nil
 }
 
 func (c *Client) ListRecords(ctx context.Context, collection, repo string) ([]*agnostic.RepoListRecords_Record, error) {
