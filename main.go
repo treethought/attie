@@ -19,7 +19,7 @@ func main() {
 		FullTimestamp:    false,
 		DisableTimestamp: true,
 	})
-	f, err := os.Create("debug.log")
+	f, err := os.Create("/tmp/attie.log")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -33,6 +33,7 @@ func main() {
 	}
 
 	app := ui.NewApp(query)
+
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
