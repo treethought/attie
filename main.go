@@ -4,7 +4,7 @@ import (
 	"os"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/treethought/goatie/ui"
+	"github.com/treethought/attie/ui"
 
 	"github.com/bluesky-social/indigo/atproto/identity"
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,7 +25,7 @@ func main() {
 	}
 	defer f.Close()
 	log.SetOutput(f)
-	log.Warn("starting goatie")
+	log.Warn("starting attie")
 
 	query := ""
 	if len(os.Args) > 1 {

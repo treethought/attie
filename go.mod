@@ -1,4 +1,4 @@
-module github.com/treethought/goatie
+module github.com/treethought/attie
 
 go 1.25.1
 
