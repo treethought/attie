@@ -43,6 +43,7 @@ func (c *Client) GetIdentity(ctx context.Context, raw string) (*identity.Identit
 	log.WithFields(log.Fields{
 		"handle": idd.Handle,
 		"DID":    idd.DID,
+		"PDS": idd.PDSEndpoint(),
 	}).Info("identifier resolved")
 	return idd, nil
 }
@@ -52,11 +53,7 @@ func (c *Client) withIdentifier(ctx context.Context, raw string) (*atclient.APIC
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup identifier: %w", err)
 	}
-	log.WithFields(log.Fields{
-		"handle": idd.Handle,
-		"DID":    idd.DID,
-	}).Info("identifier resolved")
-	return c.c.WithService(idd.PDSEndpoint()), nil
+	return atclient.NewAPIClient(idd.PDSEndpoint()), nil
 }
 
 type RepoWithIdentity struct {
@@ -65,10 +62,6 @@ type RepoWithIdentity struct {
 }
 
 func (c *Client) GetRepo(ctx context.Context, repo string) (*RepoWithIdentity, error) {
-	log.WithFields(log.Fields{
-		"repo": repo,
-	}).Info("describe repo")
-
 	id, err := c.GetIdentity(ctx, repo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup identifier: %w", err)
@@ -78,6 +71,12 @@ func (c *Client) GetRepo(ctx context.Context, repo string) (*RepoWithIdentity, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client with identifier: %w", err)
 	}
+
+	log.WithFields(log.Fields{
+		"client_host": client.Host,
+		"repo":        repo,
+		"pds":         id.PDSEndpoint(),
+	}).Info("describe repo")
 
 	// TODO: download repo as car
 	// https://github.com/bluesky-social/cookbook/blob/main/go-repo-export/main.go#L46

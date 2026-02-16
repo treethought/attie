@@ -155,7 +155,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-
 	var cmds []tea.Cmd
 	if a.loading {
 		sp, scmd := a.spinner.Update(msg)
