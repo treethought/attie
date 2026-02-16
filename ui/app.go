@@ -16,24 +16,26 @@ import (
 )
 
 type App struct {
-	client   *at.Client
-	search   *CommandPallete
-	repoView *RepoView
-	rlist    *RecordsList
-	active   tea.Model
-	err      string
-	w, h     int
+	client     *at.Client
+	search     *CommandPallete
+	repoView   *RepoView
+	rlist      *RecordsList
+	recordView *RecordView
+	active     tea.Model
+	err        string
+	w, h       int
 }
 
 func NewApp() *App {
 	search := &CommandPallete{}
 	repoView := NewRepoView()
 	return &App{
-		client:   at.NewClient(""),
-		search:   search,
-		repoView: repoView,
-		rlist:    NewRecordsList(nil),
-		active:   search,
+		client:     at.NewClient(""),
+		search:     search,
+		repoView:   repoView,
+		rlist:      NewRecordsList(nil),
+		recordView: NewRecordView(false),
+		active:     search,
 	}
 }
 
@@ -45,12 +47,10 @@ func (a *App) resizeChildren() tea.Cmd {
 	cmds := []tea.Cmd{}
 	a.search.SetSize(a.w, a.h)
 	a.repoView.SetSize(a.w, a.h)
-	if a.rlist != nil {
-		a.rlist.SetSize(a.w, a.h)
-	}
+	a.rlist.SetSize(a.w, a.h)
+	a.recordView.SetSize(a.w, a.h)
 	return tea.Batch(cmds...)
 }
-
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -72,6 +72,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case a.rlist:
 				a.active = a.repoView
 				return a, nil
+				case a.recordView:
+				a.active = a.rlist
+				return a, nil
 			}
 		}
 
@@ -89,6 +92,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case repoLoadedMsg:
 		cmd := a.repoView.SetRepo(msg.repo)
+		a.repoView.SetSize(a.w, a.h) // Set size before switching view
 		a.active = a.repoView
 		a.search.loading = false
 		return a, cmd
@@ -99,9 +103,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case recordsLoadedMsg:
 		cmd := a.rlist.SetRecords(msg.records)
+		a.rlist.SetSize(a.w, a.h) // Set size before switching view
 		a.active = a.rlist
 		a.search.loading = false
 		return a, cmd
+
+	case recordSelectedMsg:
+		a.recordView.SetRecord(msg.record)
+		a.recordView.SetSize(a.w, a.h) // Set size before switching view
+		a.active = a.recordView
+		return a, nil
 
 	case repoErrorMsg:
 		a.search.err = msg.err.Error()
@@ -163,6 +174,10 @@ type selectCollectionMsg struct {
 
 type recordsLoadedMsg struct {
 	records []*agnostic.RepoListRecords_Record
+}
+
+type recordSelectedMsg struct {
+	record *agnostic.RepoListRecords_Record
 }
 
 type repoErrorMsg struct {

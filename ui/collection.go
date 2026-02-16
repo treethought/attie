@@ -1,65 +1,19 @@
 package ui
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/bluesky-social/indigo/api/agnostic"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-type RecordView struct {
-	record *agnostic.RepoListRecords_Record
-	vp     viewport.Model
-}
-
-func NewRecordView() *RecordView {
-	vp := viewport.New(80, 20)
-	return &RecordView{
-		vp: vp,
-	}
-}
-
-func (rv *RecordView) SetSize(w, h int) {
-	rv.vp.Width = w
-	rv.vp.Height = h
-}
-
-func (rv *RecordView) SetRecord(record *agnostic.RepoListRecords_Record) {
-	rv.record = record
-	if rv.record == nil || rv.record.Value == nil {
-		rv.vp.SetContent("")
-		return
-	}
-	data, err := json.MarshalIndent(rv.record.Value, "", "  ")
-	if err != nil {
-		data = fmt.Appendf([]byte{}, "error marshaling record: %v", err)
-	}
-	rv.vp.SetContent(string(data))
-}
-
-func (rv *RecordView) Init() tea.Cmd {
-	return nil
-}
-
-func (rv *RecordView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	rv.vp, cmd = rv.vp.Update(msg)
-	return rv, cmd
-}
-
-func (rv *RecordView) View() string {
-	return rv.vp.View()
-}
-
 type RecordsList struct {
 	rlist   list.Model
-	preview RecordView
+	preview *RecordView
 	header  string
 	w, h    int
 }
@@ -108,7 +62,7 @@ func NewRecordsList(records []*agnostic.RepoListRecords_Record) *RecordsList {
 	l.SetFilteringEnabled(true)
 	rl := &RecordsList{
 		rlist:   l,
-		preview: RecordView{},
+		preview: NewRecordView(true),
 	}
 	rl.SetRecords(records)
 	return rl
@@ -171,6 +125,18 @@ func (rl *RecordsList) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if item, ok := rl.rlist.SelectedItem().(RecordListItem); ok {
 		rl.preview.SetRecord(item.r)
 	}
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter":
+			if item, ok := rl.rlist.SelectedItem().(RecordListItem); ok {
+				return rl, func() tea.Msg {
+					return recordSelectedMsg{record: item.r}
+				}
+			}
+		}
+	}
+
 	return rl, cmd
 }
 
