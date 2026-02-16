@@ -7,7 +7,7 @@ AT Protocol Terminal Interface Explorer
 - Browse PDS and repos by handle or DID
 - View collections and records
 
-![demo](https://vhs.charm.sh/vhs-2exoD8VkLq6k1f7tQ3NfOQ.gif)
+![demo](https://vhs.charm.sh/vhs-7oKRnStqGJrDA7EI9TcmGe.gif)
 
 ## Installation
 

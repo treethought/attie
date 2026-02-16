@@ -24,10 +24,13 @@ Enter
 Set TypingSpeed 0.8
 Sleep 2.5s
 Type "jjjjjjjkkkk"
+Sleep 2.5s
 Enter
 Sleep 2s
-Type "jjjjjjjjjj"
-Sleep 1s
+Type "jjjj"
+Sleep 2s
+Type "jjjjkjk"
+Sleep 3s
 Ctrl+K
 Set TypingSpeed 0.8
 Type "cosmik.network"
@@ -41,11 +44,11 @@ Enter
 Sleep 1s
 Set TypingSpeed 0.8
 Type "k"
-Sleep 500ms
+Sleep 600ms
 Type "k"
-Sleep 500ms
+Sleep 600ms
 Type "kk"
-Sleep 500ms
+Sleep 600ms
 Type "kkkk"
 Sleep 1s
 Ctrl+C
