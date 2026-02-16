@@ -13,6 +13,23 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 )
 
+// response wrappers with identity for easier navigation of views
+
+type RepoWithIdentity struct {
+	Identity *identity.Identity
+	Repo     *comatproto.RepoDescribeRepo_Output
+}
+
+type RecordsWithIdentity struct {
+	Identity *identity.Identity
+	Records  []*agnostic.RepoListRecords_Record
+}
+
+type RecordWithIdentity struct {
+	Identity *identity.Identity
+	Record   *agnostic.RepoGetRecord_Output
+}
+
 type Client struct {
 	dir identity.Directory
 	c   *atclient.APIClient
@@ -43,7 +60,7 @@ func (c *Client) GetIdentity(ctx context.Context, raw string) (*identity.Identit
 	log.WithFields(log.Fields{
 		"handle": idd.Handle,
 		"DID":    idd.DID,
-		"PDS": idd.PDSEndpoint(),
+		"PDS":    idd.PDSEndpoint(),
 	}).Info("identifier resolved")
 	return idd, nil
 }
@@ -54,11 +71,6 @@ func (c *Client) withIdentifier(ctx context.Context, raw string) (*atclient.APIC
 		return nil, fmt.Errorf("failed to lookup identifier: %w", err)
 	}
 	return atclient.NewAPIClient(idd.PDSEndpoint()), nil
-}
-
-type RepoWithIdentity struct {
-	Identity *identity.Identity
-	Repo     *comatproto.RepoDescribeRepo_Output
 }
 
 func (c *Client) GetRepo(ctx context.Context, repo string) (*RepoWithIdentity, error) {

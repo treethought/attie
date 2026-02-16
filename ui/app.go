@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"fmt"
 
 	log "github.com/sirupsen/logrus"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/treethought/goatie/at"
 )
@@ -95,12 +93,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return a, tea.Quit
+		case "ctrl+k":
+			a.active = a.search
+			a.search.loading = false
+			return a, a.search.Init()
 		case "esc":
 			switch a.active {
 			case a.repoView:
 				a.active = a.search
 				a.search.loading = false
-				return a, nil
+				return a, a.search.Init()
 			case a.rlist:
 				a.active = a.repoView
 				return a, nil
@@ -249,70 +251,3 @@ type repoErrorMsg struct {
 	err error
 }
 
-type CommandPallete struct {
-	ti      textinput.Model
-	err     string
-	loading bool
-	spinner spinner.Model
-}
-
-func (c *CommandPallete) Init() tea.Cmd {
-	c.ti = textinput.New()
-	c.ti.Placeholder = "Enter handle, DID, or AT URI"
-	c.ti.Focus()
-	c.spinner = spinner.New()
-	c.spinner.Spinner = spinner.Dot
-	return textinput.Blink
-}
-
-func (c *CommandPallete) SetSize(w, h int) {
-	c.ti.Width = w - 2
-}
-
-func (c *CommandPallete) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "enter":
-			val := c.ti.Value()
-			if val == "" {
-				c.err = "Input cannot be empty"
-				return c, nil
-			}
-			id, err := syntax.ParseAtIdentifier(val)
-			if err != nil {
-				c.err = fmt.Sprintf("Must use handle, DID or AT URI: %s", err.Error())
-				return c, nil
-			}
-			c.err = ""
-			c.loading = true
-			return c, func() tea.Msg {
-				log.Printf("Looking up identifier: %s", id.String())
-				return searchSubmitMsg{identifier: id}
-			}
-		}
-
-	}
-
-	var cmds []tea.Cmd
-	ti, tcmd := c.ti.Update(msg)
-	c.ti = ti
-	cmds = append(cmds, tcmd)
-
-	sp, scmd := c.spinner.Update(msg)
-	c.spinner = sp
-	cmds = append(cmds, scmd)
-
-	return c, tea.Batch(cmds...)
-}
-
-func (c *CommandPallete) View() string {
-	s := fmt.Sprint("Search:\n", c.ti.View())
-	if c.err != "" {
-		s += fmt.Sprintf("\nError: %s", c.err)
-	} else if c.loading {
-		s += "\nLoading... " + c.spinner.View()
-	}
-	return s
-}
