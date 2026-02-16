@@ -30,7 +30,8 @@ func (c CollectionListItem) FilterValue() string {
 	return c.Name
 }
 func (c CollectionListItem) Title() string {
-	return collectionStyle.Render(c.Name)
+	return c.Name
+	// return collectionStyle.Render(c.Name)
 }
 func (c CollectionListItem) Description() string {
 	return ""
@@ -51,7 +52,7 @@ func NewCollectionList(collections []string) *CollectionList {
 	l := list.New(items, del, 80, 20)
 	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
+	l.SetFilteringEnabled(true)
 	return &CollectionList{
 		list: l,
 	}
@@ -62,6 +63,21 @@ func (cl *CollectionList) Init() tea.Cmd {
 }
 
 func (cl *CollectionList) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+
+	if !cl.list.SettingFilter() {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "enter":
+				if item, ok := cl.list.SelectedItem().(CollectionListItem); ok {
+					return cl, func() tea.Msg {
+						return selectCollectionMsg{collection: item.Name}
+					}
+				}
+			}
+		}
+	}
+
 	var cmd tea.Cmd
 	cl.list, cmd = cl.list.Update(msg)
 	return cl, cmd
@@ -96,7 +112,6 @@ func (r *RepoView) buildHeader() string {
 	}
 	var s strings.Builder
 
-	// Title
 	s.WriteString(headerStyle.Render("📦 Repository"))
 	s.WriteString("\n\n")
 
@@ -120,14 +135,15 @@ func (r *RepoView) buildHeader() string {
 	s.WriteString(dimStyle.Render(fmt.Sprintf("(%d)", len(r.repo.Collections))))
 	s.WriteString("\n")
 
-	return s.String()
+	// add bottom border
+	return lipgloss.NewStyle().BorderBottom(true).Render(s.String())
+
 }
 
 func (r *RepoView) SetRepo(repo *comatproto.RepoDescribeRepo_Output) tea.Cmd {
 	r.repo = repo
 	r.header = r.buildHeader()
 	r.clist = NewCollectionList(repo.Collections)
-	r.updateListSize() 
 	return r.clist.Init()
 }
 
@@ -136,19 +152,15 @@ func (r *RepoView) Init() tea.Cmd {
 }
 
 func (r *RepoView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		r.width = msg.Width
-		r.height = msg.Height
-		r.updateListSize()
-	}
 	clist, cmd := r.clist.Update(msg)
 	r.clist = clist.(*CollectionList)
 	return r, cmd
 }
 
 // updateListSize calculates and sets the list size to fill remaining space
-func (r *RepoView) updateListSize() {
+func (r *RepoView) SetSize(w, h int) {
+	r.width = w
+	r.height = h
 	if r.clist == nil {
 		return
 	}
@@ -158,7 +170,7 @@ func (r *RepoView) updateListSize() {
 	// List gets all remaining space
 	listHeight := r.height - headerHeight - footerHeight
 	if listHeight < 5 {
-		listHeight = 5 
+		listHeight = 5
 	}
 
 	r.clist.list.SetSize(r.width, listHeight)

@@ -20,17 +20,22 @@ type Client struct {
 
 func NewClient(service string) *Client {
 	dir := &identity.BaseDirectory{}
+	cacheDir := identity.NewCacheDirectory(dir, 0, 0, 0, 0)
 	if service == "" {
 		service = "https://bsky.social"
 	}
 	client := atclient.NewAPIClient(service)
 	return &Client{
-		dir: dir,
+		dir: cacheDir,
 		c:   client,
 	}
 }
 
-func (c *Client) withIdentifier(ctx context.Context, id syntax.AtIdentifier) (*atclient.APIClient, error) {
+func (c *Client) withIdentifier(ctx context.Context, raw string) (*atclient.APIClient, error) {
+	id, err := syntax.ParseAtIdentifier(raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse repo identifier: %w", err)
+	}
 	idd, err := c.dir.Lookup(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup identifier: %w", err)
@@ -47,12 +52,7 @@ func (c *Client) GetRepo(ctx context.Context, repo string) (*comatproto.RepoDesc
 		"repo": repo,
 	}).Info("describe repo")
 
-	ri, err := syntax.ParseAtIdentifier(repo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse repo identifier: %w", err)
-	}
-
-	client, err := c.withIdentifier(ctx, ri)
+	client, err := c.withIdentifier(ctx, repo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client with identifier: %w", err)
 	}
@@ -64,7 +64,24 @@ func (c *Client) GetRepo(ctx context.Context, repo string) (*comatproto.RepoDesc
 		return nil, fmt.Errorf("failed to describe repo: %w", err)
 	}
 	return resp, nil
+}
 
+func (c *Client) ListRecords(ctx context.Context, collection, repo string) ([]*agnostic.RepoListRecords_Record, error) {
+	log.WithFields(log.Fields{
+		"collection": collection,
+		"repo":       repo,
+	}).Info("list records")
+
+	client, err := c.withIdentifier(ctx, repo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client with identifier: %w", err)
+	}
+
+	resp, err := agnostic.RepoListRecords(ctx, client, collection, "", 100, repo, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list records: %w", err)
+	}
+	return resp.Records, nil
 }
 
 func (c *Client) GetRecord(ctx context.Context, collection, repo, rkey string) (*agnostic.RepoGetRecord_Output, error) {
@@ -74,12 +91,7 @@ func (c *Client) GetRecord(ctx context.Context, collection, repo, rkey string) (
 		"rkey":       rkey,
 	}).Info("get record")
 
-	ri, err := syntax.ParseAtIdentifier(repo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse repo identifier: %w", err)
-	}
-
-	client, err := c.withIdentifier(ctx, ri)
+	client, err := c.withIdentifier(ctx, repo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client with identifier: %w", err)
 	}

@@ -6,6 +6,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/bluesky-social/indigo/api/agnostic"
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -18,8 +19,10 @@ type App struct {
 	client   *at.Client
 	search   *CommandPallete
 	repoView *RepoView
+	rlist    *RecordsList
 	active   tea.Model
 	err      string
+	w, h     int
 }
 
 func NewApp() *App {
@@ -29,6 +32,7 @@ func NewApp() *App {
 		client:   at.NewClient(""),
 		search:   search,
 		repoView: repoView,
+		rlist:    NewRecordsList(nil),
 		active:   search,
 	}
 }
@@ -37,21 +41,36 @@ func (a *App) Init() tea.Cmd {
 	return a.active.Init()
 }
 
+func (a *App) resizeChildren() tea.Cmd {
+	cmds := []tea.Cmd{}
+	a.search.SetSize(a.w, a.h)
+	a.repoView.SetSize(a.w, a.h)
+	if a.rlist != nil {
+		a.rlist.SetSize(a.w, a.h)
+	}
+	return tea.Batch(cmds...)
+}
+
+
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	// top level always handle ctrl-c
 	case tea.WindowSizeMsg:
-		a.active, _ = a.active.Update(msg)
-		return a, nil
+		a.w = msg.Width
+		a.h = msg.Height
+		return a, a.resizeChildren()
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return a, tea.Quit
 		case "esc":
-			// Go back to search from repo view
-			if a.active == a.repoView {
+			switch a.active {
+			case a.repoView:
 				a.active = a.search
 				a.search.loading = false
+				return a, nil
+			case a.rlist:
+				a.active = a.repoView
 				return a, nil
 			}
 		}
@@ -71,6 +90,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case repoLoadedMsg:
 		cmd := a.repoView.SetRepo(msg.repo)
 		a.active = a.repoView
+		a.search.loading = false
+		return a, cmd
+
+	case selectCollectionMsg:
+		log.Printf("Collection selected: %s", msg.collection)
+		return a, a.fetchRecords(msg.collection, a.repoView.repo.Handle)
+
+	case recordsLoadedMsg:
+		cmd := a.rlist.SetRecords(msg.records)
+		a.active = a.rlist
 		a.search.loading = false
 		return a, cmd
 
@@ -99,6 +128,22 @@ func (a *App) fetchRepo(repoId string) tea.Cmd {
 	}
 }
 
+func (a *App) fetchRecords(collection, repo string) tea.Cmd {
+	return func() tea.Msg {
+		recs, err := a.client.ListRecords(context.Background(), collection, repo)
+		if err != nil {
+			log.Printf("Failed to list records: %s", err.Error())
+			return repoErrorMsg{err: err}
+		}
+		log.WithFields(log.Fields{
+			"repo":       repo,
+			"collection": collection,
+			"numRecords": len(recs),
+		}).Info("Records loaded")
+		return recordsLoadedMsg{records: recs}
+	}
+}
+
 func (a *App) View() string {
 	return a.active.View()
 }
@@ -110,6 +155,14 @@ type searchSubmitMsg struct {
 
 type repoLoadedMsg struct {
 	repo *comatproto.RepoDescribeRepo_Output
+}
+
+type selectCollectionMsg struct {
+	collection string
+}
+
+type recordsLoadedMsg struct {
+	records []*agnostic.RepoListRecords_Record
 }
 
 type repoErrorMsg struct {
@@ -130,6 +183,10 @@ func (c *CommandPallete) Init() tea.Cmd {
 	c.spinner = spinner.New()
 	c.spinner.Spinner = spinner.Dot
 	return textinput.Blink
+}
+
+func (c *CommandPallete) SetSize(w, h int) {
+	c.ti.Width = w - 2
 }
 
 func (c *CommandPallete) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
