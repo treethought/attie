@@ -5,7 +5,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/bluesky-social/indigo/api/agnostic"
+	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -13,10 +13,16 @@ import (
 	"github.com/treethought/goatie/at"
 )
 
+type AppContext struct {
+	identity   *identity.Identity
+	repo       *comatproto.RepoDescribeRepo_Output
+	collection string
+	record     *at.Record
+}
+
 type App struct {
 	client     *at.Client
 	search     *CommandPallete
-	identity   identity.Identity
 	repoView   *RepoView
 	rlist      *RecordsList
 	recordView *RecordView
@@ -26,6 +32,7 @@ type App struct {
 	query      string
 	spinner    spinner.Model
 	loading    bool
+	actx       *AppContext
 }
 
 func NewApp(query string) *App {
@@ -43,6 +50,7 @@ func NewApp(query string) *App {
 		active:     search,
 		spinner:    spin,
 		loading:    false,
+		actx:       &AppContext{},
 	}
 }
 
@@ -53,7 +61,6 @@ func (a *App) Init() tea.Cmd {
 		return a.fetchRepo(id.String())
 	}
 	if uri, err := syntax.ParseATURI(a.query); err == nil {
-
 		if uri.Collection() == "" {
 			return a.fetchRepo(uri.Authority().String())
 		}
@@ -82,6 +89,16 @@ func (a *App) resizeChildren() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+func (a *App) resetToSearch() tea.Cmd {
+	a.actx.identity = nil
+	a.actx.repo = nil
+	a.actx.collection = ""
+	a.actx.record = nil
+	a.active = a.search
+	a.loading = false
+	return a.search.Init()
+}
+
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	// top level always handle ctrl-c
@@ -100,13 +117,22 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			switch a.active {
 			case a.repoView:
-				a.active = a.search
-				a.search.loading = false
-				return a, a.search.Init()
+				return a, a.resetToSearch()
 			case a.rlist:
+				if a.actx.identity == nil {
+					return a, a.resetToSearch()
+				}
+				if a.actx.repo != nil {
+					a.active = a.repoView
+					return a, a.repoView.Init()
+				}
 				a.active = a.repoView
-				return a, nil
+				return a, a.fetchRepo(a.actx.identity.DID.String())
 			case a.recordView:
+				if a.actx.collection != "" {
+					a.active = a.rlist
+					return a, a.fetchRecords(a.actx.collection, a.actx.identity.DID.String())
+				}
 				a.active = a.rlist
 				return a, nil
 			}
@@ -126,6 +152,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case repoLoadedMsg:
 		a.loading = false
+		a.actx.identity = msg.repo.Identity
+		a.actx.repo = msg.repo.Repo
+		a.actx.collection = ""
+		a.actx.record = nil
 		cmd := a.repoView.SetRepo(msg.repo)
 		a.repoView.SetSize(a.w, a.h) // Set size before switching view
 		a.active = a.repoView
@@ -134,11 +164,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case selectCollectionMsg:
 		log.Printf("Collection selected: %s", msg.collection)
+		a.actx.collection = msg.collection
 		return a, a.fetchRecords(msg.collection, a.repoView.repo.Handle)
 
 	case recordsLoadedMsg:
 		a.loading = false
-		cmd := a.rlist.SetRecords(msg.records)
+		a.actx.identity = msg.records.Identity
+		a.actx.collection = msg.records.Collection()
+		a.actx.record = nil
+		cmd := a.rlist.SetRecords(msg.records.Records)
 		a.rlist.SetSize(a.w, a.h) // Set size before switching view
 		a.active = a.rlist
 		a.search.loading = false
@@ -146,7 +180,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case recordSelectedMsg:
 		a.loading = false
-		a.recordView.SetRecord(msg.record)
+		a.actx.identity = msg.record.Identity
+		a.actx.collection = msg.record.Record.Collection()
+		a.actx.record = msg.record.Record
+		a.recordView.SetRecord(msg.record.Record)
 		a.recordView.SetSize(a.w, a.h) // Set size before switching view
 		a.active = a.recordView
 		return a, nil
@@ -193,7 +230,7 @@ func (a *App) fetchRecords(collection, repo string) tea.Cmd {
 		log.WithFields(log.Fields{
 			"repo":       repo,
 			"collection": collection,
-			"numRecords": len(recs),
+			"numRecords": len(recs.Records),
 		}).Info("Records loaded")
 		return recordsLoadedMsg{records: recs}
 	}
@@ -212,10 +249,8 @@ func (a *App) fetchRecord(collection, repo, rkey string) tea.Cmd {
 			"rkey":       rkey,
 		}).Info("Record loaded")
 		return recordSelectedMsg{
-			record: &agnostic.RepoListRecords_Record{
-				Uri:   rec.Uri,
-				Value: rec.Value,
-			}}
+			record: rec,
+		}
 	}
 }
 
@@ -240,14 +275,13 @@ type selectCollectionMsg struct {
 }
 
 type recordsLoadedMsg struct {
-	records []*agnostic.RepoListRecords_Record
+	records *at.RecordsWithIdentity
 }
 
 type recordSelectedMsg struct {
-	record *agnostic.RepoListRecords_Record
+	record *at.RecordWithIdentity
 }
 
 type repoErrorMsg struct {
 	err error
 }
-

@@ -2,28 +2,30 @@ package ui
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"strings"
 
-	"github.com/bluesky-social/indigo/api/agnostic"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/treethought/goatie/at"
 )
 
 type RecordsList struct {
-	rlist   list.Model
-	preview *RecordView
-	header  string
-	w, h    int
+	rlist      list.Model
+	preview    *RecordView
+	header     string
+	w, h       int
+	collection string
 }
 
 type RecordListItem struct {
-	r      *agnostic.RepoListRecords_Record
+	r      *at.Record
 	parsed syntax.ATURI
 }
 
-func NewRecordListItem(r *agnostic.RepoListRecords_Record) RecordListItem {
+func NewRecordListItem(r *at.Record) RecordListItem {
 	uri, _ := syntax.ParseATURI(r.Uri)
 	return RecordListItem{
 		r:      r,
@@ -49,7 +51,7 @@ func truncMiddle(s string, max int) string {
 	return s[:half] + "..." + s[len(s)-half:]
 }
 
-func NewRecordsList(records []*agnostic.RepoListRecords_Record) *RecordsList {
+func NewRecordsList(records []*at.Record) *RecordsList {
 	del := list.DefaultDelegate{
 		ShowDescription: true,
 		Styles:          list.NewDefaultItemStyles(),
@@ -68,7 +70,11 @@ func NewRecordsList(records []*agnostic.RepoListRecords_Record) *RecordsList {
 	return rl
 }
 
-func (rl *RecordsList) SetRecords(records []*agnostic.RepoListRecords_Record) tea.Cmd {
+func (rl *RecordsList) SetRecords(records []*at.Record) tea.Cmd {
+	if records == nil {
+		log.Error("SetRecords called with nil")
+		return nil
+	}
 	rl.preview.SetRecord(nil)
 	rl.rlist.SetItems(nil)
 	items := make([]list.Item, len(records))
@@ -77,6 +83,9 @@ func (rl *RecordsList) SetRecords(records []*agnostic.RepoListRecords_Record) te
 		items[i] = list.Item(ci)
 	}
 	cmd := rl.rlist.SetItems(items)
+	if len(items) > 0 {
+		rl.preview.SetRecord(items[0].(RecordListItem).r)
+	}
 	rl.header = rl.buildHeader()
 	return cmd
 }
@@ -131,7 +140,11 @@ func (rl *RecordsList) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if item, ok := rl.rlist.SelectedItem().(RecordListItem); ok {
 				return rl, func() tea.Msg {
-					return recordSelectedMsg{record: item.r}
+					return recordSelectedMsg{
+						record: &at.RecordWithIdentity{
+							Record: item.r,
+						},
+					}
 				}
 			}
 		}

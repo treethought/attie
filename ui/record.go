@@ -4,15 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/bluesky-social/indigo/api/agnostic"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/treethought/goatie/at"
 )
 
 type RecordView struct {
-	record  *agnostic.RepoListRecords_Record
+	record  *at.Record
 	vp      viewport.Model
 	header  string
 	preview bool
@@ -46,10 +46,11 @@ func (rv *RecordView) buildHeader() string {
 	return headerStyle.Render(header)
 }
 
-func (rv *RecordView) SetRecord(record *agnostic.RepoListRecords_Record) {
+func (rv *RecordView) SetRecord(record *at.Record) {
 	rv.record = record
 	if rv.record == nil || rv.record.Value == nil {
 		rv.vp.SetContent("")
+		rv.header = ""
 		return
 	}
 	data, err := json.MarshalIndent(rv.record.Value, "", "  ")

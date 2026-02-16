@@ -2,6 +2,7 @@ package at
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
@@ -13,7 +14,39 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 )
 
-// response wrappers with identity for easier navigation of views
+type Record struct {
+	Uri   string
+	Cid   string
+	Value *json.RawMessage
+}
+
+func (r *Record) Collection() string {
+	uri, err := syntax.ParseATURI(r.Uri)
+	if err != nil {
+		return ""
+	}
+	return uri.Collection().String()
+}
+
+func NewRecordFromList(r *agnostic.RepoListRecords_Record) *Record {
+	return &Record{
+		Uri:   r.Uri,
+		Cid:   r.Cid,
+		Value: r.Value,
+	}
+}
+
+func NewRecordFromGet(r *agnostic.RepoGetRecord_Output) *Record {
+	cid := ""
+	if r.Cid != nil {
+		cid = *r.Cid
+	}
+	return &Record{
+		Uri:   r.Uri,
+		Cid:   cid,
+		Value: r.Value,
+	}
+}
 
 type RepoWithIdentity struct {
 	Identity *identity.Identity
@@ -22,12 +55,19 @@ type RepoWithIdentity struct {
 
 type RecordsWithIdentity struct {
 	Identity *identity.Identity
-	Records  []*agnostic.RepoListRecords_Record
+	Records  []*Record
+}
+
+func (r *RecordsWithIdentity) Collection() string {
+	if len(r.Records) == 0 {
+		return ""
+	}
+	return r.Records[0].Collection()
 }
 
 type RecordWithIdentity struct {
 	Identity *identity.Identity
-	Record   *agnostic.RepoGetRecord_Output
+	Record   *Record
 }
 
 type Client struct {
@@ -65,21 +105,16 @@ func (c *Client) GetIdentity(ctx context.Context, raw string) (*identity.Identit
 	return idd, nil
 }
 
-func (c *Client) withIdentifier(ctx context.Context, raw string) (*atclient.APIClient, error) {
+func (c *Client) withIdentifier(ctx context.Context, raw string) (*atclient.APIClient, *identity.Identity, error) {
 	idd, err := c.GetIdentity(ctx, raw)
 	if err != nil {
-		return nil, fmt.Errorf("failed to lookup identifier: %w", err)
+		return nil, nil, fmt.Errorf("failed to lookup identifier: %w", err)
 	}
-	return atclient.NewAPIClient(idd.PDSEndpoint()), nil
+	return atclient.NewAPIClient(idd.PDSEndpoint()), idd, nil
 }
 
 func (c *Client) GetRepo(ctx context.Context, repo string) (*RepoWithIdentity, error) {
-	id, err := c.GetIdentity(ctx, repo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to lookup identifier: %w", err)
-	}
-
-	client, err := c.withIdentifier(ctx, repo)
+	client, id, err := c.withIdentifier(ctx, repo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client with identifier: %w", err)
 	}
@@ -102,13 +137,13 @@ func (c *Client) GetRepo(ctx context.Context, repo string) (*RepoWithIdentity, e
 	}, nil
 }
 
-func (c *Client) ListRecords(ctx context.Context, collection, repo string) ([]*agnostic.RepoListRecords_Record, error) {
+func (c *Client) ListRecords(ctx context.Context, collection, repo string) (*RecordsWithIdentity, error) {
 	log.WithFields(log.Fields{
 		"collection": collection,
 		"repo":       repo,
 	}).Info("list records")
 
-	client, err := c.withIdentifier(ctx, repo)
+	client, id, err := c.withIdentifier(ctx, repo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client with identifier: %w", err)
 	}
@@ -117,17 +152,26 @@ func (c *Client) ListRecords(ctx context.Context, collection, repo string) ([]*a
 	if err != nil {
 		return nil, fmt.Errorf("failed to list records: %w", err)
 	}
-	return resp.Records, nil
+
+	records := make([]*Record, len(resp.Records))
+	for i, r := range resp.Records {
+		records[i] = NewRecordFromList(r)
+	}
+
+	return &RecordsWithIdentity{
+		Identity: id,
+		Records:  records,
+	}, nil
 }
 
-func (c *Client) GetRecord(ctx context.Context, collection, repo, rkey string) (*agnostic.RepoGetRecord_Output, error) {
+func (c *Client) GetRecord(ctx context.Context, collection, repo, rkey string) (*RecordWithIdentity, error) {
 	log.WithFields(log.Fields{
 		"collection": collection,
 		"repo":       repo,
 		"rkey":       rkey,
 	}).Info("get record")
 
-	client, err := c.withIdentifier(ctx, repo)
+	client, id, err := c.withIdentifier(ctx, repo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client with identifier: %w", err)
 	}
@@ -136,5 +180,9 @@ func (c *Client) GetRecord(ctx context.Context, collection, repo, rkey string) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to get record: %w", err)
 	}
-	return resp, nil
+
+	return &RecordWithIdentity{
+		Identity: id,
+		Record:   NewRecordFromGet(resp),
+	}, nil
 }
