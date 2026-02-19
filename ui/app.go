@@ -120,7 +120,9 @@ func (a *App) resetToSearch() tea.Cmd {
 func (a *App) setJetStreamActive(active bool) tea.Cmd {
 	if active {
 		a.jetEventView.SetEvent(nil)
-		a.lastView = a.active
+		if a.active != a.jetEventView {
+			a.lastView = a.active
+		}
 		a.jetSreamActive = true
 		a.jetstream.SetSize(a.w, a.h)
 		if a.jetstream.Running() {
