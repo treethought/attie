@@ -91,6 +91,7 @@ func (a *App) resizeChildren() tea.Cmd {
 	a.repoView.SetSize(a.w, a.h)
 	a.rlist.SetSize(a.w, a.h)
 	a.recordView.SetSize(a.w, a.h)
+	a.jetstream.SetSize(a.w, a.h)
 	return tea.Batch(cmds...)
 }
 
@@ -121,6 +122,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, a.search.Init()
 		case "ctrl+j":
 			a.active = a.jetstream
+			a.jetstream.SetSize(a.w, a.h)
 			if a.jetstream.Running() {
 				return a, a.jetstream.Stop()
 			} else {

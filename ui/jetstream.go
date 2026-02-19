@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/bluesky-social/jetstream/pkg/models"
@@ -44,11 +45,18 @@ type jetStreamErrorMsg struct {
 	err error
 }
 
+type session struct {
+	lastCursor  *int64
+	collections []string
+	dids        []string
+}
+
 type JetStreamView struct {
-	list   list.Model
-	jc     *at.JetStreamClient
-	ctx    context.Context
-	cancel context.CancelFunc
+	list    list.Model
+	jc      *at.JetStreamClient
+	ctx     context.Context
+	cancel  context.CancelFunc
+	session session
 }
 
 func NewJetStreamView(jc *at.JetStreamClient) *JetStreamView {
@@ -83,6 +91,7 @@ func (m *JetStreamView) Listen() tea.Cmd {
 }
 
 func (m *JetStreamView) AddEvent(evt *models.Event) tea.Cmd {
+	m.session.lastCursor = &evt.TimeUS
 	item := jetEventItem{evt: evt}
 	return m.list.InsertItem(0, item)
 }
@@ -102,6 +111,11 @@ func (m *JetStreamView) Start(cxs, dids []string, cursor *int64) tea.Cmd {
 		slog.Warn("JetStream client already running")
 		return nil
 	}
+	m.session = session{
+		lastCursor:  cursor,
+		collections: cxs,
+		dids:        dids,
+	}
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	slog.Info("Starting JetStream client", "collections", cxs, "dids", dids, "cursor", cursor)
 	go m.jc.Start(m.ctx, cxs, dids, cursor)
@@ -120,18 +134,12 @@ func (m *JetStreamView) Init() tea.Cmd {
 	return nil
 }
 func (m *JetStreamView) SetSize(w, h int) {
-	m.list.SetSize(w, h)
+	headerHeight := lipgloss.Height(m.header())
+	m.list.SetSize(w, h-headerHeight)
 }
 
 func (m *JetStreamView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
-	// case jetStreamStartMsg:
-	// 	return m, m.Start(msg.cxs, msg.dids, msg.cur)
-	//
-	// case jetStreamStopMsg:
-	// 	m.Stop()
-	// 	return m, nil
 
 	case jetStreamErrorMsg:
 		slog.Error("JetStream client error", "error", msg.err)
@@ -148,9 +156,50 @@ func (m *JetStreamView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+var jetstreamTitleStyle = lipgloss.NewStyle().
+	Bold(true).
+	Foreground(lipgloss.Color("205")).
+	BorderStyle(lipgloss.NormalBorder()).
+	BorderBottom(true).
+	BorderForeground(lipgloss.Color("62")).
+	PaddingLeft(1)
+
+func (m *JetStreamView) header() string {
+	cxs := dimStyle.Render("all")
+	if len(m.session.collections) > 0 {
+		cxs = strings.Join(m.session.collections, ", ")
+	}
+	dids := dimStyle.Render("all")
+	if len(m.session.dids) > 0 {
+		dids = strings.Join(m.session.dids, ", ")
+	}
+	lastCursor := dimStyle.Render("live")
+	if m.session.lastCursor != nil {
+		t := time.Unix(0, *m.session.lastCursor*int64(time.Microsecond))
+		lastCursor = t.Format("2006-01-02 15:04:05")
+	}
+
+	title := jetstreamTitleStyle.Render("📡  JetStream Events")
+
+	dot := dimStyle.Render("  ·  ")
+	filters := lipgloss.JoinHorizontal(lipgloss.Left,
+		dimStyle.Render(" collections: "), cxs,
+		dot, dimStyle.Render("dids: "), dids,
+		dot, dimStyle.Render("cursor: "), lastCursor,
+	)
+
+	return lipgloss.JoinVertical(lipgloss.Left, title, filters)
+}
+
 func (m *JetStreamView) View() string {
 	if m.ctx == nil {
-		return dimStyle.Render("JetStream client not running")
+		return lipgloss.JoinVertical(lipgloss.Left,
+			jetstreamTitleStyle.Render("📡  JetStream Events"),
+			dimStyle.Render("\n  not connected  ·  press ctrl+j to start"),
+		)
 	}
-	return m.list.View()
+	return lipgloss.JoinVertical(lipgloss.Left,
+		m.header(),
+		m.list.View(),
+	)
 }
