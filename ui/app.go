@@ -32,6 +32,8 @@ type App struct {
 	spinner    spinner.Model
 	loading    bool
 	actx       *AppContext
+
+	jetstream *JetStreamView
 }
 
 func NewApp(query string) *App {
@@ -39,6 +41,9 @@ func NewApp(query string) *App {
 	repoView := NewRepoView()
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
+
+	jc := at.NewJetstreamClient()
+	jv := NewJetStreamView(jc)
 	return &App{
 		query:      query,
 		client:     at.NewClient(""),
@@ -50,6 +55,7 @@ func NewApp(query string) *App {
 		spinner:    spin,
 		loading:    false,
 		actx:       &AppContext{},
+		jetstream:  jv,
 	}
 }
 
@@ -113,6 +119,21 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.active = a.search
 			a.search.loading = false
 			return a, a.search.Init()
+		case "ctrl+j":
+			a.active = a.jetstream
+			if a.jetstream.Running() {
+				return a, a.jetstream.Stop()
+			} else {
+				cxs := []string{}
+				dids := []string{}
+				if a.actx.collection != "" {
+					cxs = append(cxs, a.actx.collection)
+				}
+				if a.actx.identity != nil {
+					dids = append(dids, a.actx.identity.DID.String())
+				}
+				return a, a.jetstream.Start(cxs, dids, nil)
+			}
 		case "esc":
 			switch a.active {
 			case a.repoView:
@@ -134,6 +155,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				a.active = a.rlist
 				return a, nil
+			case a.jetstream:
+				return a, a.jetstream.Stop()
 			}
 		}
 
