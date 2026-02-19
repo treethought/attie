@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/bluesky-social/jetstream/pkg/models"
 	"github.com/charmbracelet/bubbles/list"
@@ -26,12 +27,13 @@ func (j jetEventItem) FilterValue() string {
 }
 func (j jetEventItem) Title() string {
 	return fmt.Sprintf("%s %s %s",
-		j.evt.Commit.Operation, j.evt.Commit.Collection, j.evt.Commit.RKey,
+		opStyle.Render(j.evt.Commit.Operation), j.evt.Commit.Collection, dimStyle.Render(j.evt.Commit.RKey),
 	)
 }
 
 func (j jetEventItem) Description() string {
-	return fmt.Sprintf("%s - %s", j.evt.Did, j.evt.TimeUS)
+	t := time.Unix(0, j.evt.TimeUS*int64(time.Microsecond))
+	return fmt.Sprintf("%s - %s", didStyle.Render(j.evt.Did), t.Format("2006-01-02 15:04:05"))
 }
 
 type eventMsg struct {
