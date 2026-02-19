@@ -1,9 +1,9 @@
 package main
 
 import (
+	"log/slog"
 	"os"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/treethought/attie/ui"
 
 	"github.com/bluesky-social/indigo/atproto/identity"
@@ -15,17 +15,14 @@ type Client struct {
 }
 
 func main() {
-	log.SetFormatter(&log.TextFormatter{
-		FullTimestamp:    false,
-		DisableTimestamp: true,
-	})
 	f, err := os.Create("/tmp/attie.log")
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("failed to create log file", "error", err)
+		os.Exit(1)
 	}
 	defer f.Close()
-	log.SetOutput(f)
-	log.Warn("starting attie")
+	slog.SetDefault(slog.New(slog.NewTextHandler(f, nil)))
+	slog.Info("starting attie")
 
 	query := ""
 	if len(os.Args) > 1 {
@@ -36,6 +33,6 @@ func main() {
 
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		log.Fatal(err)
+		slog.Error("program error", "error", err)
 	}
 }

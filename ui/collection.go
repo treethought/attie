@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"strings"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -72,7 +71,6 @@ func NewRecordsList(records []*at.Record) *RecordsList {
 
 func (rl *RecordsList) SetRecords(records []*at.Record) tea.Cmd {
 	if records == nil {
-		log.Error("SetRecords called with nil")
 		return nil
 	}
 	rl.preview.SetRecord(nil)

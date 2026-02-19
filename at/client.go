@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/bluesky-social/indigo/api/agnostic"
 	"github.com/bluesky-social/indigo/atproto/atclient"
@@ -97,11 +97,7 @@ func (c *Client) GetIdentity(ctx context.Context, raw string) (*identity.Identit
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup identifier: %w", err)
 	}
-	log.WithFields(log.Fields{
-		"handle": idd.Handle,
-		"DID":    idd.DID,
-		"PDS":    idd.PDSEndpoint(),
-	}).Info("identifier resolved")
+	slog.Info("identifier resolved", "handle", idd.Handle, "DID", idd.DID, "PDS", idd.PDSEndpoint())
 	return idd, nil
 }
 
@@ -119,12 +115,6 @@ func (c *Client) GetRepo(ctx context.Context, repo string) (*RepoWithIdentity, e
 		return nil, fmt.Errorf("failed to get client with identifier: %w", err)
 	}
 
-	log.WithFields(log.Fields{
-		"client_host": client.Host,
-		"repo":        repo,
-		"pds":         id.PDSEndpoint(),
-	}).Info("describe repo")
-
 	// TODO: download repo as car
 	// https://github.com/bluesky-social/cookbook/blob/main/go-repo-export/main.go#L46
 	resp, err := comatproto.RepoDescribeRepo(ctx, client, repo)
@@ -138,11 +128,6 @@ func (c *Client) GetRepo(ctx context.Context, repo string) (*RepoWithIdentity, e
 }
 
 func (c *Client) ListRecords(ctx context.Context, collection, repo string) (*RecordsWithIdentity, error) {
-	log.WithFields(log.Fields{
-		"collection": collection,
-		"repo":       repo,
-	}).Info("list records")
-
 	client, id, err := c.withIdentifier(ctx, repo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client with identifier: %w", err)
@@ -165,12 +150,6 @@ func (c *Client) ListRecords(ctx context.Context, collection, repo string) (*Rec
 }
 
 func (c *Client) GetRecord(ctx context.Context, collection, repo, rkey string) (*RecordWithIdentity, error) {
-	log.WithFields(log.Fields{
-		"collection": collection,
-		"repo":       repo,
-		"rkey":       rkey,
-	}).Info("get record")
-
 	client, id, err := c.withIdentifier(ctx, repo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client with identifier: %w", err)

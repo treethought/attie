@@ -2,8 +2,7 @@ package ui
 
 import (
 	"fmt"
-
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -68,7 +67,7 @@ func (c *CommandPallete) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.err = ""
 			c.loading = true
 			return c, func() tea.Msg {
-				log.Printf("Looking up identifier: %s", id.String())
+				slog.Info("Looking up identifier", "id", id.String())
 				return searchSubmitMsg{identifier: id}
 			}
 		}

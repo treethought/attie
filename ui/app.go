@@ -2,8 +2,7 @@ package ui
 
 import (
 	"context"
-
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/atproto/identity"
@@ -57,7 +56,7 @@ func NewApp(query string) *App {
 func (a *App) Init() tea.Cmd {
 	a.loading = true
 	if id, err := syntax.ParseAtIdentifier(a.query); err == nil {
-		log.Printf("Starting with query: %s", id.String())
+		slog.Info("Starting with query", "id", id.String())
 		return a.fetchRepo(id.String())
 	}
 	if uri, err := syntax.ParseATURI(a.query); err == nil {
@@ -72,7 +71,7 @@ func (a *App) Init() tea.Cmd {
 			return a.fetchRecords(uri.Collection().String(), id)
 		}
 
-		log.Printf("Starting with query: %s", uri.String())
+		slog.Info("Starting with query", "uri", uri.String())
 		return a.fetchRecord(uri.Collection().String(), uri.Authority().String(), uri.RecordKey().String())
 	}
 
@@ -142,11 +141,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// parse for handle/DID or a record URI
 		id, err := syntax.ParseAtIdentifier(msg.identifier.String())
 		if err != nil {
-			log.Fatalf("Failed to parse identifier, should have caught during submission: %s", err.Error())
+			slog.Error("Failed to parse identifier, should have caught during submission", "error", err)
 			return a, nil
 		}
 		if id.IsDID() || id.IsHandle() {
-			log.Printf("Repo identifier submitted: %s", id.String())
 			return a, a.fetchRepo(id.String())
 		}
 
@@ -163,7 +161,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 
 	case selectCollectionMsg:
-		log.Printf("Collection selected: %s", msg.collection)
+		slog.Info("Collection selected", "collection", msg.collection)
 		a.actx.collection = msg.collection
 		return a, a.fetchRecords(msg.collection, a.repoView.repo.Handle)
 
@@ -208,14 +206,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (a *App) fetchRepo(repoId string) tea.Cmd {
 	return func() tea.Msg {
+		slog.Info("Fetching repo", "repoId", repoId)
 		resp, err := a.client.GetRepo(context.Background(), repoId)
 		if err != nil {
-			log.Printf("Failed to get repo: %s", err.Error())
+			slog.Error("Failed to get repo", "error", err)
 			return repoErrorMsg{err: err}
 		}
-		log.WithFields(log.Fields{
-			"repo": resp.Repo.Handle,
-		}).Info("Repo loaded")
+		slog.Info("Repo loaded", "repo", resp.Repo.Handle)
 		return repoLoadedMsg{repo: resp}
 	}
 }
@@ -224,14 +221,10 @@ func (a *App) fetchRecords(collection, repo string) tea.Cmd {
 	return func() tea.Msg {
 		recs, err := a.client.ListRecords(context.Background(), collection, repo)
 		if err != nil {
-			log.Printf("Failed to list records: %s", err.Error())
+			slog.Error("Failed to list records", "error", err)
 			return repoErrorMsg{err: err}
 		}
-		log.WithFields(log.Fields{
-			"repo":       repo,
-			"collection": collection,
-			"numRecords": len(recs.Records),
-		}).Info("Records loaded")
+		slog.Info("Records loaded", "repo", repo, "collection", collection, "numRecords", len(recs.Records))
 		return recordsLoadedMsg{records: recs}
 	}
 }
@@ -240,14 +233,10 @@ func (a *App) fetchRecord(collection, repo, rkey string) tea.Cmd {
 	return func() tea.Msg {
 		rec, err := a.client.GetRecord(context.Background(), collection, repo, rkey)
 		if err != nil {
-			log.Printf("Failed to get record: %s", err.Error())
+			slog.Error("Failed to get record", "error", err)
 			return repoErrorMsg{err: err}
 		}
-		log.WithFields(log.Fields{
-			"repo":       repo,
-			"collection": collection,
-			"rkey":       rkey,
-		}).Info("Record loaded")
+		slog.Info("Record loaded", "repo", repo, "collection", collection, "rkey", rkey)
 		return recordSelectedMsg{
 			record: rec,
 		}
