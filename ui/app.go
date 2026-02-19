@@ -9,6 +9,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/treethought/attie/at"
 )
 
@@ -92,14 +93,17 @@ func (a *App) Init() tea.Cmd {
 	return a.active.Init()
 }
 
+const footerHeight = 1
+
 func (a *App) resizeChildren() tea.Cmd {
 	cmds := []tea.Cmd{}
-	a.search.SetSize(a.w, a.h)
-	a.repoView.SetSize(a.w, a.h)
-	a.rlist.SetSize(a.w, a.h)
-	a.recordView.SetSize(a.w, a.h)
-	a.jetstream.SetSize(a.w, a.h)
-	a.jetEventView.SetSize(a.w, a.h)
+	h := a.h - footerHeight
+	a.search.SetSize(a.w, h)
+	a.repoView.SetSize(a.w, h)
+	a.rlist.SetSize(a.w, h)
+	a.recordView.SetSize(a.w, h)
+	a.jetstream.SetSize(a.w, h)
+	a.jetEventView.SetSize(a.w, h)
 	return tea.Batch(cmds...)
 }
 
@@ -225,7 +229,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.actx.collection = ""
 		a.actx.record = nil
 		cmd := a.repoView.SetRepo(msg.repo)
-		a.repoView.SetSize(a.w, a.h) // Set size before switching view
+		a.repoView.SetSize(a.w, a.h-footerHeight) // Set size before switching view
 		a.active = a.repoView
 		a.search.loading = false
 		return a, cmd
@@ -241,7 +245,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.actx.collection = msg.records.Collection()
 		a.actx.record = nil
 		cmd := a.rlist.SetRecords(msg.records.Records)
-		a.rlist.SetSize(a.w, a.h) // Set size before switching view
+		a.rlist.SetSize(a.w, a.h-footerHeight) // Set size before switching view
 		a.active = a.rlist
 		a.search.loading = false
 		return a, cmd
@@ -252,13 +256,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.actx.collection = msg.record.Record.Collection()
 		a.actx.record = msg.record.Record
 		a.recordView.SetRecord(msg.record.Record)
-		a.recordView.SetSize(a.w, a.h) // Set size before switching view
+		a.recordView.SetSize(a.w, a.h-footerHeight) // Set size before switching view
 		a.active = a.recordView
 		return a, nil
 
 	case jetEventSelectedMsg:
 		a.jetEventView.SetEvent(msg.evt)
-		a.jetEventView.SetSize(a.w, a.h)
+		a.jetEventView.SetSize(a.w, a.h-footerHeight)
 		a.active = a.jetEventView
 		a.jetSreamActive = false
 		return a, nil
@@ -326,14 +330,28 @@ func (a *App) fetchRecord(collection, repo, rkey string) tea.Cmd {
 	}
 }
 
+func (a *App) footer() string {
+	key := func(k string) string {
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")).Render(k)
+	}
+	sep := dimStyle.Render(" · ")
+	content := key("esc") + dimStyle.Render(" back") +
+		sep + key("ctrl+k") + dimStyle.Render(" search") +
+		sep + key("ctrl+j") + dimStyle.Render(" jetstream")
+	return lipgloss.NewStyle().Width(a.w).Align(lipgloss.Right).Render(content)
+}
+
 func (a *App) View() string {
 	if a.loading {
 		return "Loading... " + a.spinner.View()
 	}
+	var body string
 	if a.jetSreamActive {
-		return a.jetstream.View()
+		body = a.jetstream.View()
+	} else {
+		body = a.active.View()
 	}
-	return a.active.View()
+	return lipgloss.JoinVertical(lipgloss.Left, body, a.footer())
 }
 
 // Message types

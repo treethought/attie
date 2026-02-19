@@ -173,10 +173,9 @@ func (r *RepoView) SetSize(w, h int) {
 		return
 	}
 	headerHeight := lipgloss.Height(r.header)
-	footerHeight := 2 // "\n" + help text line
 
 	// List gets all remaining space
-	listHeight := r.height - headerHeight - footerHeight
+	listHeight := r.height - headerHeight
 	if listHeight < 5 {
 		listHeight = 5
 	}
@@ -188,15 +187,5 @@ func (r *RepoView) View() string {
 	if r.repo == nil {
 		return "No repository loaded"
 	}
-
-	// Footer help text
-	footer := dimStyle.Render("Press Esc to go back • ↑/↓ or j/k to navigate • Ctrl+C to quit")
-
-	// Join header (fixed), list (scrollable), and footer
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		r.header,
-		r.clist.View(),
-		"\n"+footer,
-	)
+	return lipgloss.JoinVertical(lipgloss.Left, r.header, r.clist.View())
 }
