@@ -53,10 +53,12 @@ type session struct {
 
 type JetStreamView struct {
 	list    list.Model
+	preview *JetStreamEventView
 	jc      *at.JetStreamClient
 	ctx     context.Context
 	cancel  context.CancelFunc
 	session session
+	w, h    int
 }
 
 func NewJetStreamView(jc *at.JetStreamClient) *JetStreamView {
@@ -71,14 +73,14 @@ func NewJetStreamView(jc *at.JetStreamClient) *JetStreamView {
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
 	return &JetStreamView{
-		list: l,
-		jc:   jc,
+		list:    l,
+		preview: NewJetEventView(true),
+		jc:      jc,
 	}
 }
 
 func (m *JetStreamView) Listen() tea.Cmd {
 	return func() tea.Msg {
-		slog.Info("Listening for JetStream events...")
 		select {
 		case err := <-m.jc.Err():
 			slog.Error("JetStream client error", "error", err)
@@ -101,8 +103,9 @@ func (m *JetStreamView) Running() bool {
 }
 func (m *JetStreamView) Clear() tea.Cmd {
 	return func() tea.Msg {
-		m.list.SetItems(nil)
-		return nil
+		m.session = session{}
+		m.preview.SetEvent(nil)
+		return m.list.SetItems(nil)
 	}
 }
 
@@ -134,8 +137,19 @@ func (m *JetStreamView) Init() tea.Cmd {
 	return nil
 }
 func (m *JetStreamView) SetSize(w, h int) {
-	headerHeight := lipgloss.Height(m.header())
-	m.list.SetSize(w, h-headerHeight)
+	m.w = w
+	m.h = h
+	hh := lipgloss.Height(m.header())
+	if m.ctx == nil {
+		hh += 1
+	}
+	if w > 100 {
+		m.list.SetSize(w/2, h-hh)
+		m.preview.SetSize(w/2, h-hh)
+		return
+	}
+	m.list.SetSize(w, h-hh)
+	m.preview.SetSize(0, 0)
 }
 
 func (m *JetStreamView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -151,8 +165,22 @@ func (m *JetStreamView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Listen(),
 		)
 	}
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		if msg.String() == "enter" {
+			if item, ok := m.list.SelectedItem().(jetEventItem); ok {
+				return m, func() tea.Msg {
+					return jetEventSelectedMsg{evt: item.evt}
+				}
+			}
+		}
+	}
+
 	l, cmd := m.list.Update(msg)
 	m.list = l
+	if item, ok := m.list.SelectedItem().(jetEventItem); ok {
+		m.preview.SetEvent(item.evt)
+	}
 	return m, cmd
 }
 
@@ -175,8 +203,7 @@ func (m *JetStreamView) header() string {
 	}
 	lastCursor := dimStyle.Render("live")
 	if m.session.lastCursor != nil {
-		t := time.Unix(0, *m.session.lastCursor*int64(time.Microsecond))
-		lastCursor = t.Format("2006-01-02 15:04:05")
+		lastCursor = fmt.Sprintf("%d", *m.session.lastCursor)
 	}
 
 	title := jetstreamTitleStyle.Render("📡  JetStream Events")
@@ -192,14 +219,24 @@ func (m *JetStreamView) header() string {
 }
 
 func (m *JetStreamView) View() string {
+	hdr := m.header()
+	status := ""
 	if m.ctx == nil {
-		return lipgloss.JoinVertical(lipgloss.Left,
-			jetstreamTitleStyle.Render("📡  JetStream Events"),
-			dimStyle.Render("\n  not connected  ·  press ctrl+j to start"),
-		)
+		status = dimStyle.Render("  not connected  ·  press ctrl+j to start")
 	}
-	return lipgloss.JoinVertical(lipgloss.Left,
-		m.header(),
-		m.list.View(),
-	)
+
+	if m.w > 100 {
+		left := lipgloss.JoinVertical(lipgloss.Left, m.list.View())
+		right := m.preview.View()
+		body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+		if status != "" {
+			return lipgloss.JoinVertical(lipgloss.Left, hdr, status, body)
+		}
+		return lipgloss.JoinVertical(lipgloss.Left, hdr, body)
+	}
+
+	if status != "" {
+		return lipgloss.JoinVertical(lipgloss.Left, hdr, status, m.list.View())
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, hdr, m.list.View())
 }

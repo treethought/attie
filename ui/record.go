@@ -5,30 +5,17 @@ import (
 	"fmt"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/treethought/attie/at"
 )
 
 type RecordView struct {
-	record  *at.Record
-	vp      viewport.Model
-	header  string
-	preview bool
+	ContentView
+	record *at.Record
 }
 
 func NewRecordView(preview bool) *RecordView {
-	vp := viewport.New(80, 20)
-	return &RecordView{
-		vp:      vp,
-		preview: preview,
-	}
-}
-
-func (rv *RecordView) SetSize(w, h int) {
-	rv.vp.Width = w
-	rv.vp.Height = h - lipgloss.Height(rv.header)
+	return &RecordView{ContentView: newContentView(preview)}
 }
 
 func (rv *RecordView) buildHeader() string {
@@ -48,29 +35,23 @@ func (rv *RecordView) buildHeader() string {
 
 func (rv *RecordView) SetRecord(record *at.Record) {
 	rv.record = record
-	if rv.record == nil || rv.record.Value == nil {
-		rv.vp.SetContent("")
-		rv.header = ""
+	if record == nil || record.Value == nil {
+		rv.Set("", "")
 		return
 	}
-	data, err := json.MarshalIndent(rv.record.Value, "", "  ")
+	data, err := json.MarshalIndent(record.Value, "", "  ")
 	if err != nil {
 		data = fmt.Appendf([]byte{}, "error marshaling record: %v", err)
 	}
-	rv.vp.SetContent(string(data))
-	rv.header = rv.buildHeader()
+	rv.Set(rv.buildHeader(), string(data))
 }
 
 func (rv *RecordView) Init() tea.Cmd {
-	return rv.vp.Init()
+	return rv.initVP()
 }
-
 func (rv *RecordView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	rv.vp, cmd = rv.vp.Update(msg)
-	return rv, cmd
+	return rv, rv.updateVP(msg)
 }
-
 func (rv *RecordView) View() string {
-	return lipgloss.JoinVertical(lipgloss.Left, rv.header, rv.vp.View())
+	return rv.renderVP()
 }

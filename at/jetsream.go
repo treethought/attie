@@ -67,7 +67,7 @@ func (c *JetStreamClient) handleEvent(ctx context.Context, ev *models.Event) err
 	case c.out <- ev:
 		return nil
 	default:
-		slog.Warn("deopped event", "did", ev.Did, "kind", ev.Kind)
+		slog.Warn("dropped event", "did", ev.Did, "kind", ev.Kind)
 	}
 	return nil
 }

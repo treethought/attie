@@ -20,20 +20,26 @@ type AppContext struct {
 }
 
 type App struct {
-	client     *at.Client
-	search     *CommandPallete
-	repoView   *RepoView
-	rlist      *RecordsList
-	recordView *RecordView
-	active     tea.Model
-	err        string
-	w, h       int
-	query      string
-	spinner    spinner.Model
-	loading    bool
-	actx       *AppContext
+	client       *at.Client
+	search       *CommandPallete
+	repoView     *RepoView
+	rlist        *RecordsList
+	recordView   *RecordView
+	jetEventView *JetStreamEventView
+	active       tea.Model
+	err          string
+	w, h         int
+	query        string
+	spinner      spinner.Model
+	loading      bool
+	actx         *AppContext
 
-	jetstream *JetStreamView
+	jetstream      *JetStreamView
+	jetSreamActive bool
+
+	// TODO better nav handling
+	// this currently only used for going back from jetstreamevent
+	lastView tea.Model
 }
 
 func NewApp(query string) *App {
@@ -45,17 +51,18 @@ func NewApp(query string) *App {
 	jc := at.NewJetstreamClient()
 	jv := NewJetStreamView(jc)
 	return &App{
-		query:      query,
-		client:     at.NewClient(""),
-		search:     search,
-		repoView:   repoView,
-		rlist:      NewRecordsList(nil),
-		recordView: NewRecordView(false),
-		active:     search,
-		spinner:    spin,
-		loading:    false,
-		actx:       &AppContext{},
-		jetstream:  jv,
+		query:        query,
+		client:       at.NewClient(""),
+		search:       search,
+		repoView:     repoView,
+		rlist:        NewRecordsList(nil),
+		recordView:   NewRecordView(false),
+		jetEventView: NewJetEventView(false),
+		active:       search,
+		spinner:      spin,
+		loading:      false,
+		actx:         &AppContext{},
+		jetstream:    jv,
 	}
 }
 
@@ -92,6 +99,7 @@ func (a *App) resizeChildren() tea.Cmd {
 	a.rlist.SetSize(a.w, a.h)
 	a.recordView.SetSize(a.w, a.h)
 	a.jetstream.SetSize(a.w, a.h)
+	a.jetEventView.SetSize(a.w, a.h)
 	return tea.Batch(cmds...)
 }
 
@@ -103,6 +111,45 @@ func (a *App) resetToSearch() tea.Cmd {
 	a.active = a.search
 	a.loading = false
 	return a.search.Init()
+}
+
+func (a *App) setJetStreamActive(active bool) tea.Cmd {
+	if active {
+		a.jetEventView.SetEvent(nil)
+		a.lastView = a.active
+		a.jetSreamActive = true
+		a.jetstream.SetSize(a.w, a.h)
+		if a.jetstream.Running() {
+			// pause but keep view and items visisble
+			return a.jetstream.Stop()
+		}
+
+		cxs := []string{}
+		dids := []string{}
+		if a.actx.collection != "" {
+			cxs = append(cxs, a.actx.collection)
+		}
+		if a.actx.identity != nil {
+			dids = append(dids, a.actx.identity.DID.String())
+		}
+		return a.jetstream.Start(cxs, dids, nil)
+	}
+
+	a.jetSreamActive = false
+	// clear event view
+	a.jetEventView.SetEvent(nil)
+	cmds := []tea.Cmd{
+		a.jetstream.Stop(),
+		a.jetstream.Clear(),
+	}
+	if a.lastView != nil {
+		a.active = a.lastView
+	} else {
+		cmds = append(cmds, a.resetToSearch())
+	}
+	return tea.Sequence(
+		cmds...,
+	)
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -117,26 +164,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return a, tea.Quit
 		case "ctrl+k":
+			// keep jetstream active, and stop on search submit
+			a.jetSreamActive = false
 			a.active = a.search
 			a.search.loading = false
 			return a, a.search.Init()
 		case "ctrl+j":
-			a.active = a.jetstream
-			a.jetstream.SetSize(a.w, a.h)
-			if a.jetstream.Running() {
-				return a, a.jetstream.Stop()
-			} else {
-				cxs := []string{}
-				dids := []string{}
-				if a.actx.collection != "" {
-					cxs = append(cxs, a.actx.collection)
-				}
-				if a.actx.identity != nil {
-					dids = append(dids, a.actx.identity.DID.String())
-				}
-				return a, a.jetstream.Start(cxs, dids, nil)
-			}
+			return a, a.setJetStreamActive(true)
 		case "esc":
+			if a.jetSreamActive {
+				return a, a.setJetStreamActive(false)
+			}
 			switch a.active {
 			case a.repoView:
 				return a, a.resetToSearch()
@@ -151,14 +189,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.active = a.repoView
 				return a, a.fetchRepo(a.actx.identity.DID.String())
 			case a.recordView:
+				if a.actx.identity == nil {
+					return a, a.resetToSearch()
+				}
 				if a.actx.collection != "" {
 					a.active = a.rlist
 					return a, a.fetchRecords(a.actx.collection, a.actx.identity.DID.String())
 				}
 				a.active = a.rlist
 				return a, nil
-			case a.jetstream:
-				return a, a.jetstream.Stop()
+			case a.jetEventView:
+				return a, a.setJetStreamActive(true)
 			}
 		}
 
@@ -170,7 +211,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if id.IsDID() || id.IsHandle() {
-			return a, a.fetchRepo(id.String())
+			return a,
+				tea.Sequence(
+					a.setJetStreamActive(false),
+					a.fetchRepo(id.String()),
+				)
 		}
 
 	case repoLoadedMsg:
@@ -211,10 +256,22 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.active = a.recordView
 		return a, nil
 
+	case jetEventSelectedMsg:
+		a.jetEventView.SetEvent(msg.evt)
+		a.jetEventView.SetSize(a.w, a.h)
+		a.active = a.jetEventView
+		a.jetSreamActive = false
+		return a, nil
+
 	case repoErrorMsg:
 		a.search.err = msg.err.Error()
 		a.search.loading = false
 		return a, nil
+	}
+
+	if a.jetSreamActive {
+		_, cmd := a.jetstream.Update(msg)
+		return a, cmd
 	}
 
 	var cmds []tea.Cmd
@@ -223,6 +280,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.spinner = sp
 		cmds = append(cmds, scmd)
 	}
+
 	var ac tea.Cmd
 	a.active, ac = a.active.Update(msg)
 	cmds = append(cmds, ac)
@@ -271,6 +329,9 @@ func (a *App) fetchRecord(collection, repo, rkey string) tea.Cmd {
 func (a *App) View() string {
 	if a.loading {
 		return "Loading... " + a.spinner.View()
+	}
+	if a.jetSreamActive {
+		return a.jetstream.View()
 	}
 	return a.active.View()
 }
